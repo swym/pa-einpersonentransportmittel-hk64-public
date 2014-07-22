@@ -20,6 +20,8 @@
 #include "mpu9150.h"
 #include "filters.h"
 
+#include "common.h"
+#include <avr/io.h>
 
 
 /* *** DEFINES ************************************************************** */
@@ -43,7 +45,7 @@ static angularvelocity_t angularvelocity_offset;
 
 static double position_multiplier;
 
-static average_vector_t average_angularvelocity;		//average vector for using with motionsensor_get_current_angularvelocity(angularvelocity_t *angularvelocity);
+static average_vector_t average_angularvelocity;			//average vector for using with motionsensor_get_current_angularvelocity(angularvelocity_t *angularvelocity);
 static weighted_average_t average_angularvelocity_y;		//single average for using with motionsensor_get_current_angularvelocity_y();
 
 average_vector_t average_acceleration;
@@ -67,19 +69,25 @@ int16_t motionsensor_get_angle()
 	acceleration_t cur_acceleration;  //current acceleration
 	int16_t cur_angularvelocity_y;    //current angularvelocity
 	int16_t accel_angle_y;			  //calculated angle from acceleration sensor
-	int16_t angle_y;			      //fusioned angle
+	int16_t angle_y;			      //merged angle
 
+	PORT_SCOPE = _BV(2);
 
 	motionsensor_get_current_acceleration(&cur_acceleration);
 	cur_angularvelocity_y = motionsensor_get_current_angularvelocity_y();
 	//cur_angularvelocity_y = mpu9150_read_angularvelocity_y();
 
+	PORT_SCOPE ^= _BV(0) | _BV(1);
+
 	//determine angle using acceleration vectors and atan and normalize
 	accel_angle_y = (int16_t)((atan2(cur_acceleration.x, cur_acceleration.z) * NORMALIZATION_RAD2INT14));
+
+	PORT_SCOPE ^= _BV(1) | _BV(2);
 
 	//integrate angular velocity to angle over time (dt = 4 ms) and normalize
 	//integrated_gyro_angle_y += (cur_angularvelocity_y * (4/1000));
 	integrated_angularvelocity_angle_y += cur_angularvelocity_y * NORMALIZATION_AVELO2INT14;
+
 
 	//TODO: HACK: to reduce gyro errors, reset integrated gyro if acceleration of x is 0;
 	//Use a more stable solution
@@ -87,10 +95,14 @@ int16_t motionsensor_get_angle()
 //		reset_integrated_gyro_angle_y();
 //	}
 
+
+
 	//sensordata fusion with a complementary filter
 	//angle_y = (0.3 * gyro_angle_y) + (0.7 * accel_angle_y); //ok, aber sehr verrauscht
 	angle_y = (complementary_filter_angularvelocity_factor * integrated_angularvelocity_angle_y) +
 			  (complementary_filter_acceleraton_factor * accel_angle_y);
+
+	PORT_SCOPE = 0x00;
 
 	return angle_y;
 
@@ -109,10 +121,10 @@ int16_t motionsensor_get_current_angularvelocity_y(void)
 			angularvelocity_offset.y;
 
 	//determine mean
-	filters_weighted_average_put_element(&average_angularvelocity_y, new_angularvelocity_y);
+	//filters_weighted_average_put_element(&average_angularvelocity_y, new_angularvelocity_y);
 
 	//return mean
-	return average_angularvelocity_y.mean;
+	return new_angularvelocity_y;
 }
 
 
